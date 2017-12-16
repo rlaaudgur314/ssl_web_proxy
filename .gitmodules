@@ -1,0 +1,3 @@
+[submodule "cert1"]
+	path = cert1
+	url = https://github.com/snoopspy/cert

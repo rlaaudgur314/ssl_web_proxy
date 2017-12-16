@@ -1,9 +1,7 @@
 import SocketServer
 import socket
-import os
-
-def GenCertification():
-    
+import os, sys
+import ssl
 
 def CheckCONNECTMethod(data):
     if(data.split(' ')[0] == 'CONNECT'):
@@ -21,35 +19,38 @@ class MyTCPHandler(SocketServer.BaseRequestHandler):
             
             self.request.sendall('HTTP/1.1 Connection established\r\n\r\n')
 
-            GenCertification(sockHost)
+            os.system('cd cert && _make_site.bat ' + hostname) # generate cert
+            path = os.path.join(os.getcwd(),'cert',sockHost+'.pem')
             
-            #send request
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.connect((sockHost, 80))
-            sock.sendall(buf)
-            cnt = 0
+            ssl_sock = ssl.wrap_socket(self.request, server_side = True, keyfile = path, cerfile = path) # wrap with cert
             
-            while(1):
-                recvdata = sock.recv(8192)
-                if not recvdata:
-                    break
-                #print(recvdata)
-                if(recvdata.count('HTTP/1.1') == 2): # data together
-                    recvdata = recvdata[recvdata[1:].find('HTTP/1.1'):] # second data
-                    #print(recvdata)
-                    self.request.sendall(recvdata)
-                else:
-                    if(cnt == 0): # drop first data
-                        cnt = 1
-                        continue
-                    else:
-                        cnt = 0
-                        self.request.sendall(recvdata)
+            ssl_request = ssl_sock.recv(8192) # get request
 
-            print('end')
-            sock.close()
+            try:
+                sock = ssl.wrap_socket(socket.socket(socket.AF_INET, socket.SOCK_STREAM))
+                sock.connect((sockHost, 443))
+
+                sock.sendall(ssl_request) # send request
+
+                while(1):
+                    recvdata = sock.recv(8192)
+                    if not recvdata:
+                        break
+                    #print(recvdata)
+                    ssl_sock.sendall(data)
+
+                sock.close()
+
+            except socket.error:
+                print("socket error")
+                sock.close()
+                sys.exit(1)
+
+            ssl_sock.close()
 
 if __name__ == '__main__':
+    os.system('cd cert && _clear_site.bat') # clear cert
+    os.system('cd cert && _init_site.bat') # init cert
     host, port = '127.0.0.1', 4433
     server = SocketServer.ThreadingTCPServer((host,port), MyTCPHandler)
     server.serve_forever()
